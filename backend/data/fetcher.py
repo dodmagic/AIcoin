@@ -17,6 +17,8 @@ from .cleaner import clean_ohlcv
 
 COINGECKO_BASE = os.getenv("COINGECKO_BASE", "https://api.coingecko.com/api/v3")
 DAY_SECONDS = 86_400
+# Starting price for the deterministic offline/fallback synthetic series.
+SYNTHETIC_BASE_PRICE = 45_000
 _cache = Cache()
 
 
@@ -111,7 +113,7 @@ def _synthetic(days: int, seed: int = 42) -> pd.DataFrame:
     trend = 0.0008 * t  # gentle upward drift in log space
     seasonal = 0.05 * np.sin(2 * np.pi * t / 90)  # ~quarterly cycle
     shocks = rng.normal(0, 0.02, n)
-    log_price = np.log(45000) + trend + seasonal + np.cumsum(shocks)
+    log_price = np.log(SYNTHETIC_BASE_PRICE) + trend + seasonal + np.cumsum(shocks)
     close = np.exp(log_price)
 
     rows = []

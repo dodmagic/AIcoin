@@ -180,13 +180,13 @@ const ChartManager = {
      */
     setSignals(signals) {
         if (!this.candleSeries) return;
-        const markers = (signals || []).map(s => ({
-            time: s.time,
-            position: s.type === 'buy' ? 'belowBar' : 'aboveBar',
-            color: s.type === 'buy' ? '#26a69a' : '#ef5350',
-            shape: s.type === 'buy' ? 'arrowUp' : 'arrowDown',
-            text: s.type === 'buy' ? '买' : '卖'
-        }));
+        const STYLE = {
+            buy: { position: 'belowBar', color: '#26a69a', shape: 'arrowUp', text: '买' },
+            sell: { position: 'aboveBar', color: '#ef5350', shape: 'arrowDown', text: '卖' }
+        };
+        const markers = (signals || [])
+            .filter(s => STYLE[s.type])
+            .map(s => ({ time: s.time, ...STYLE[s.type] }));
         const unique = this._dedup(markers);
         try { this.candleSeries.setMarkers(unique); } catch (e) { /* ignore */ }
     },

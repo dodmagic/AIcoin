@@ -8,6 +8,9 @@
     let currentIndicator = 'ma';
     let pricesCache = [];
 
+    // 后端缺少方向准确率时的默认置信度 (%)
+    const DEFAULT_CONFIDENCE = 60;
+
     // ===== Init =====
     async function init() {
         showLoading(true);
@@ -151,7 +154,7 @@
 
         // 用回测方向准确率作为置信度
         const m = res.metrics || {};
-        const conf = m.directional_accuracy != null ? Math.round(m.directional_accuracy * 100) : 60;
+        const conf = m.directional_accuracy != null ? Math.round(m.directional_accuracy * 100) : DEFAULT_CONFIDENCE;
         document.getElementById('statConfidence').textContent = `${conf}%`;
         document.getElementById('confidenceFill').style.width = `${conf}%`;
 

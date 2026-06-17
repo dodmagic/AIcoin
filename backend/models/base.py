@@ -15,6 +15,16 @@ import pandas as pd
 
 DAY_SECONDS = 86_400
 
+# GARCH-like volatility clustering parameters (used by `simulate`).
+# sigma_t mean-reverts toward the long-run level while a random shock keeps
+# the path noisy so the confidence cone widens realistically.
+_VOL_MEAN_REVERSION = 0.85   # weight pulling sigma back to the base level
+_VOL_PERSISTENCE = 0.15      # weight kept from the previous step's sigma
+_VOL_SHOCK_SCALE = 0.30      # size of the random sigma shock (x base_sigma)
+_VOL_SHOCK_STD = 0.15        # std-dev of the raw shock draw
+_VOL_FLOOR = 0.4             # min sigma as a multiple of base_sigma
+_VOL_CEIL = 3.0              # max sigma as a multiple of base_sigma
+
 
 @dataclass
 class ForecastResult:
@@ -67,12 +77,18 @@ def simulate(
     seasonal = np.zeros(7) if seasonal is None else seasonal
     period = len(seasonal) if len(seasonal) else 7
 
-    # Volatility clustering: sigma_t = base * (1 + small AR(1) wobble).
+    # Volatility clustering (see module-level _VOL_* constants).
     sigma_paths = np.empty((n_paths, horizon))
     vol = np.full(n_paths, base_sigma)
     for d in range(horizon):
-        shock = rng.normal(0, 0.15, n_paths)
-        vol = np.clip(base_sigma * 0.85 + 0.15 * vol / base_sigma * base_sigma + shock * base_sigma * 0.3, base_sigma * 0.4, base_sigma * 3)
+        shock = rng.normal(0, _VOL_SHOCK_STD, n_paths)
+        vol = np.clip(
+            base_sigma * _VOL_MEAN_REVERSION
+            + _VOL_PERSISTENCE * vol
+            + shock * base_sigma * _VOL_SHOCK_SCALE,
+            base_sigma * _VOL_FLOOR,
+            base_sigma * _VOL_CEIL,
+        )
         sigma_paths[:, d] = vol
 
     z = rng.standard_normal((n_paths, horizon))

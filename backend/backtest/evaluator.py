@@ -8,6 +8,9 @@ import pandas as pd
 
 from .. import models
 
+# Crypto markets trade every day, so annualisation uses 365 days.
+DAYS_PER_YEAR = 365
+
 
 def metrics(actual: np.ndarray, predicted: np.ndarray) -> Dict[str, float]:
     """Compute MSE / MAE / RMSE / MAPE and directional accuracy."""
@@ -90,10 +93,10 @@ def statistics(df: pd.DataFrame, risk_free: float = 0.0) -> Dict:
             "annual_return": 0.0,
         }
 
-    daily_rf = risk_free / 365
+    daily_rf = risk_free / DAYS_PER_YEAR
     excess = rets - daily_rf
     sharpe = (
-        float(np.mean(excess) / np.std(excess) * np.sqrt(365))
+        float(np.mean(excess) / np.std(excess) * np.sqrt(DAYS_PER_YEAR))
         if np.std(excess) > 0
         else 0.0
     )
@@ -104,8 +107,8 @@ def statistics(df: pd.DataFrame, risk_free: float = 0.0) -> Dict:
     max_dd = float(drawdown.min())
 
     win_rate = float(np.mean(rets > 0))
-    annual_vol = float(np.std(rets) * np.sqrt(365))
-    annual_return = float((cum[-1] ** (365 / len(rets))) - 1) if cum[-1] > 0 else 0.0
+    annual_vol = float(np.std(rets) * np.sqrt(DAYS_PER_YEAR))
+    annual_return = float((cum[-1] ** (DAYS_PER_YEAR / len(rets))) - 1) if cum[-1] > 0 else 0.0
 
     return {
         "sharpe": round(sharpe, 4),
