@@ -1,0 +1,17 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Local cache DB / data artifacts
+data/cache.db
+data/*.db
+
+# Docker / VCS metadata
+Dockerfile
+.dockerignore
+.git/
+.gitignore

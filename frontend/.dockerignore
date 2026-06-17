@@ -1,0 +1,9 @@
+# VCS / docker metadata
+.git/
+.gitignore
+Dockerfile
+.dockerignore
+
+# Node / OS
+node_modules/
+.DS_Store
