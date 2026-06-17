@@ -45,12 +45,26 @@
         <div class="control-group">
             <label>预测模型:</label>
             <select id="predictionModel" class="select">
-                <option value="combined">综合预测</option>
-                <option value="linear">线性回归</option>
-                <option value="ma">移动平均</option>
+                <option value="ensemble">集成预测 (Ensemble)</option>
+                <option value="arima">ARIMA 时间序列</option>
+                <option value="prophet">Prophet</option>
+                <option value="lstm">LSTM 深度学习</option>
+                <option value="xgboost">XGBoost</option>
+                <option value="combined">本地综合 (无后端)</option>
+                <option value="linear">本地线性回归</option>
             </select>
         </div>
+        <div class="control-group">
+            <label>量化后端:</label>
+            <input id="backendUrl" class="select" type="text"
+                   placeholder="http://localhost:8000" title="Python 后端地址" />
+        </div>
         <button class="btn btn-primary" id="refreshBtn">🔄 刷新数据</button>
+    </div>
+
+    <div class="backend-bar">
+        <span id="backendStatus" class="backend-status">检测后端中…</span>
+        <span id="backendStats" class="backend-stats"></span>
     </div>
 
     <!-- 主图表区域 -->
@@ -135,6 +149,7 @@
     </footer>
 
     <script src="js/api.js"></script>
+    <script src="js/backend.js"></script>
     <script src="js/prediction.js"></script>
     <script src="js/chart.js"></script>
     <script src="js/app.js"></script>

@@ -392,3 +392,34 @@ body {
         gap: 8px;
     }
 }
+
+/* ===== 量化后端状态栏 ===== */
+.backend-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
+    padding: 8px 20px;
+    font-size: 13px;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.15);
+}
+
+.backend-status {
+    font-weight: 600;
+}
+
+.backend-status.online {
+    color: #26a69a;
+}
+
+.backend-status.offline {
+    color: #ff9800;
+}
+
+.backend-stats {
+    opacity: 0.85;
+}
+
+#backendUrl {
+    min-width: 200px;
+}
