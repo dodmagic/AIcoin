@@ -1,7 +1,6 @@
 """REST API routes."""
 from __future__ import annotations
 
-import numpy as np
 from fastapi import APIRouter, Query
 
 from .. import models
