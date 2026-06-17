@@ -74,13 +74,13 @@ def _fetch_coingecko(days: int) -> pd.DataFrame:
 
     rows = []
     for item in ohlc:
-        ts, o, h, l, c = item
+        ts, o, h, lo, c = item
         rows.append(
             {
                 "time": int(ts) // 1000,
                 "open": o,
                 "high": h,
-                "low": l,
+                "low": lo,
                 "close": c,
                 "volume": np.nan,
             }

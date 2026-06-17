@@ -1,0 +1,33 @@
+# Integration test stack. Pulls the freshly built images from GHCR (the tag is
+# injected via the IMAGE_TAG environment variable, defaulting to `latest`) and
+# wires the frontend to the backend through the Nginx reverse proxy.
+#
+# Usage:
+#   IMAGE_TAG=sha-abc123 docker compose -f docker-compose.test.yml up -d
+services:
+  backend:
+    image: ghcr.io/dodmagic/aicoin-backend:${IMAGE_TAG:-latest}
+    container_name: aicoin-backend-test
+    environment:
+      CORS_ORIGINS: "*"
+      # Avoid hitting external data providers during integration tests.
+      AICOIN_DISABLE_NETWORK: "1"
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: "no"
+
+  frontend:
+    image: ghcr.io/dodmagic/aicoin-frontend:${IMAGE_TAG:-latest}
+    container_name: aicoin-frontend-test
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: "no"

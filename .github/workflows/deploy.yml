@@ -1,0 +1,115 @@
+name: Deploy & Integration Test
+
+on:
+  workflow_run:
+    workflows: ["Docker Build & Push"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to test (defaults to latest)"
+        required: false
+        default: "latest"
+
+permissions:
+  contents: read
+  packages: read
+  issues: write
+
+jobs:
+  integration:
+    name: Containerised integration test
+    runs-on: ubuntu-latest
+    # For workflow_run, only proceed when the upstream build succeeded.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    env:
+      IMAGE_TAG: ${{ github.event.inputs.image_tag || 'latest' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull images and start the stack
+        run: |
+          docker compose -f docker-compose.test.yml pull
+          docker compose -f docker-compose.test.yml up -d
+
+      - name: Wait for backend to become healthy
+        run: |
+          for i in $(seq 1 30); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' aicoin-backend-test 2>/dev/null || echo "starting")
+            echo "attempt $i: backend health=$status"
+            if [ "$status" = "healthy" ]; then exit 0; fi
+            sleep 5
+          done
+          echo "Backend did not become healthy in time" >&2
+          exit 1
+
+      - name: Run integration tests
+        run: |
+          set -euo pipefail
+
+          echo "==> backend /health"
+          curl -fsS http://localhost:8000/health | tee /dev/stderr | grep -q '"status":"ok"'
+
+          echo "==> backend /api/klines"
+          curl -fsS "http://localhost:8000/api/klines?days=30" | grep -q '"candles"'
+
+          echo "==> frontend root"
+          code=$(curl -fsS -o /dev/null -w "%{http_code}" http://localhost:8080/)
+          test "$code" = "200"
+
+          echo "==> frontend reverse-proxies /api to backend"
+          curl -fsS "http://localhost:8080/api/klines?days=10" | grep -q '"candles"'
+
+          echo "==> frontend reverse-proxies /health to backend"
+          curl -fsS http://localhost:8080/health | grep -q '"status":"ok"'
+
+          echo "All integration tests passed."
+
+      - name: Collect container logs
+        if: always()
+        run: |
+          mkdir -p logs
+          docker compose -f docker-compose.test.yml logs --no-color > logs/compose.log 2>&1 || true
+          docker compose -f docker-compose.test.yml ps > logs/ps.txt 2>&1 || true
+
+      - name: Upload logs artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-logs
+          path: logs/
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.test.yml down -v || true
+
+      - name: Open an issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const title = `🚨 Integration tests failed (${process.env.IMAGE_TAG})`;
+            const body = [
+              `Containerised integration tests failed for image tag \`${process.env.IMAGE_TAG}\`.`,
+              ``,
+              `- Workflow run: ${runUrl}`,
+              `- Commit: ${context.sha}`,
+              ``,
+              `See the **integration-logs** artifact for container logs.`,
+            ].join('\n');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['ci', 'integration-failure'],
+            });
