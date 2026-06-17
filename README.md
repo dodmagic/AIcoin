@@ -1,5 +1,11 @@
 # AIcoin - Bitcoin Price Prediction Platform
 
+[![CI](https://github.com/dodmagic/AIcoin/actions/workflows/ci.yml/badge.svg)](https://github.com/dodmagic/AIcoin/actions/workflows/ci.yml)
+[![Docker Build & Push](https://github.com/dodmagic/AIcoin/actions/workflows/docker-build.yml/badge.svg)](https://github.com/dodmagic/AIcoin/actions/workflows/docker-build.yml)
+[![Deploy & Integration Test](https://github.com/dodmagic/AIcoin/actions/workflows/deploy.yml/badge.svg)](https://github.com/dodmagic/AIcoin/actions/workflows/deploy.yml)
+[![backend image](https://img.shields.io/badge/ghcr.io-aicoin--backend-blue?logo=docker)](https://github.com/dodmagic/AIcoin/pkgs/container/aicoin-backend)
+[![frontend image](https://img.shields.io/badge/ghcr.io-aicoin--frontend-blue?logo=docker)](https://github.com/dodmagic/AIcoin/pkgs/container/aicoin-frontend)
+
 🚀 比特币价格预测平台 - **Python 量化后端 + 前端可视化**，提供专业的时间序列 / 机器学习预测与技术分析。
 
 > ⚠️ 仅供学习和研究目的，预测结果不构成任何投资建议。加密货币市场波动剧烈，请谨慎投资。
@@ -54,9 +60,16 @@ AIcoin/
 │   ├── models/             # ARIMA / Prophet / LSTM / XGBoost / Ensemble
 │   ├── backtest/           # 回测 + 评估指标
 │   └── tests/              # pytest
-├── Dockerfile
-├── docker-compose.yml
-└── .github/workflows/ci.yml
+├── backend/Dockerfile      # 后端镜像 (python:3.11-slim, 多阶段, 非 root)
+├── frontend/               # 前端容器化 (Nginx)
+│   ├── Dockerfile          # nginx:alpine 静态站点镜像
+│   └── nginx.conf          # /api 反向代理到 backend:8000
+├── docker-compose.yml      # 一键启动整个栈 (GHCR 镜像)
+├── docker-compose.test.yml # 容器化集成测试栈
+└── .github/workflows/
+    ├── ci.yml              # CI: ruff lint + pytest + 前端 lint
+    ├── docker-build.yml    # 构建并推送多架构镜像到 GHCR (+ Trivy + cosign + SBOM)
+    └── deploy.yml          # 拉取镜像 + 集成测试 + 失败自动告警
 ```
 
 ---
@@ -65,12 +78,31 @@ AIcoin/
 
 ### 方式一：Docker Compose（推荐，一键启动后端 + 前端）
 
+直接拉取已发布到 GHCR 的镜像启动（**无需本地构建**）：
+
 ```bash
-docker-compose up --build
+# 拉取 docker-compose.yml 并启动
+curl -O https://raw.githubusercontent.com/dodmagic/AIcoin/main/docker-compose.yml
+docker compose pull
+docker compose up -d
+
+# 访问前端
+open http://localhost:8080
+```
+
+或在本地源码目录中构建并启动：
+
+```bash
+docker compose up --build -d
 ```
 
 - 后端 API: <http://localhost:8000>（交互式文档 <http://localhost:8000/docs>）
-- 前端页面: <http://localhost:8080>
+- 前端页面: <http://localhost:8080>（Nginx 将 `/api/*` 反向代理到后端）
+
+镜像地址（multi-arch: amd64 + arm64）：
+
+- `ghcr.io/dodmagic/aicoin-backend:latest`
+- `ghcr.io/dodmagic/aicoin-frontend:latest`
 
 ### 方式二：本地运行后端 + 前端
 
@@ -141,14 +173,62 @@ AICOIN_DISABLE_NETWORK=1 python -m pytest backend/tests/ -q
 
 ---
 
-## ☁️ 部署
+## ☁️ 部署 & CI/CD
 
-- **后端**：使用仓库根目录的 `Dockerfile` 可部署到 Railway / Fly.io / Render 等（免费层）。
-  通过环境变量配置：
-  - `CORS_ORIGINS`（逗号分隔，默认 `*`）
-  - `CACHE_TTL_SECONDS`（缓存有效期，默认 3600）
-- **前端**：继续托管在 GitHub Pages，通过 `?backend=` 或页面输入框指向已部署的后端（CORS 已开启）。
-- **CI**：`.github/workflows/ci.yml` 在 push / PR 时运行 pytest 并构建 Docker 镜像。
+整个构建、测试、推送、集成测试流程**完全在 GitHub Actions 云端完成**，无需本地 Docker 环境。
+
+```
+开发者 push → GitHub
+                 │
+                 ▼
+        ┌─────────────────────┐
+        │ ci.yml              │
+        │  • ruff lint        │
+        │  • pytest           │
+        │  • 前端 JS lint     │
+        └────────┬────────────┘
+                 │ 通过 (push 到 main / 打 tag v*)
+                 ▼
+        ┌─────────────────────┐
+        │ docker-build.yml    │
+        │  • build backend    │
+        │  • build frontend   │
+        │  • multi-arch       │
+        │    (amd64 + arm64)  │
+        │  • push to ghcr.io  │
+        │  • Trivy 漏洞扫描   │
+        │  • cosign 签名      │
+        │  • SBOM 生成        │
+        └────────┬────────────┘
+                 │ 构建成功后自动触发
+                 ▼
+        ┌─────────────────────┐
+        │ deploy.yml          │
+        │  • pull from ghcr   │
+        │  • compose up       │
+        │  • 集成测试         │
+        │  • 日志 artifact    │
+        │  • 失败自动开 issue │
+        └─────────────────────┘
+                 │
+                 ▼
+              ✅ Done
+```
+
+**镜像标签策略：** `latest`（main 分支）/ `v1.2.3`（语义化 tag）/ `sha-abc123`（commit SHA）三种并存。
+
+**首次配置（仓库 Settings）：**
+
+- Settings → Actions → General → Workflow permissions 勾选 **Read and write permissions**（允许推送 packages）。
+- 首次推送后，在仓库 **Packages** 页面把 `aicoin-backend` / `aicoin-frontend` 镜像设为 **public** 以便公开部署。
+
+**单镜像部署（仅后端）：** 使用 `backend/Dockerfile` 可部署到 Railway / Fly.io / Render 等。
+通过环境变量配置：
+
+- `CORS_ORIGINS`（逗号分隔，默认 `*`）
+- `CACHE_TTL_SECONDS`（缓存有效期，默认 3600）
+
+**前端**：也可继续托管在 GitHub Pages，通过 `?backend=` 或页面输入框指向已部署的后端（CORS 已开启）。
 
 ---
 
