@@ -4,6 +4,10 @@
 # to the backend container. Build context is the repository root.
 FROM nginx:alpine
 
+# Upgrade all packages to pick up latest security patches (e.g. CVE-2026-45447,
+# CVE-2026-6732 affecting libcrypto3/libssl3/libxml2 in Alpine 3.23).
+RUN apk upgrade --no-cache
+
 # Reverse-proxy + static config.
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 
