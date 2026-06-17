@@ -1,0 +1,28 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aicoin-backend
+    ports:
+      - "8000:8000"
+    environment:
+      # Comma separated list of allowed CORS origins (use * for any).
+      CORS_ORIGINS: "*"
+      # Cache time-to-live for fetched candles, in seconds.
+      CACHE_TTL_SECONDS: "3600"
+    restart: unless-stopped
+
+  # Optional: serve the static frontend locally on http://localhost:8080
+  frontend:
+    image: nginx:alpine
+    container_name: aicoin-frontend
+    ports:
+      - "8080:80"
+    volumes:
+      - ./index.html:/usr/share/nginx/html/index.html:ro
+      - ./css:/usr/share/nginx/html/css:ro
+      - ./js:/usr/share/nginx/html/js:ro
+    depends_on:
+      - backend
+    restart: unless-stopped

@@ -4,7 +4,7 @@
 (async function () {
     // ===== State =====
     let currentRange = 365;
-    let currentModel = 'combined';
+    let currentModel = 'ensemble';
     let currentIndicator = 'ma';
     let pricesCache = [];
 
@@ -52,7 +52,7 @@
             ChartManager.addIndicator(currentIndicator, pricesCache);
 
             // 运行预测
-            runPrediction();
+            await runPrediction();
 
             // 滚动到最新
             ChartManager.scrollToEnd();
@@ -64,9 +64,28 @@
     }
 
     // ===== Prediction =====
-    function runPrediction() {
-        const result = Prediction.predict(pricesCache, currentModel, 180);
+    async function runPrediction() {
+        // 优先使用 Python 后端 (真实波动 + 80/95 置信区间扇形)
+        if (await Backend.isAvailable()) {
+            try {
+                const horizon = 180;
+                const res = await Backend.predict(currentModel, horizon, currentRange);
+                if (res.predictions && res.predictions.length > 0) {
+                    ChartManager.setPredictionFan(res.predictions);
+                    updateStatsFromBackend(res);
+                    setBackendStatus(true, res);
+                    await loadSignals();
+                    ChartManager.scrollToEnd();
+                    return;
+                }
+            } catch (err) {
+                console.warn('后端预测失败, 回退本地引擎:', err);
+            }
+        }
+        setBackendStatus(false);
 
+        // 回退: 本地 JS 预测引擎
+        const result = Prediction.predict(pricesCache, mapLocalModel(currentModel), 180);
         if (result.predictions.length > 0) {
             ChartManager.setPrediction(
                 result.predictions,
@@ -74,8 +93,94 @@
                 result.lowerBand
             );
         }
-
         updateStats(result.stats);
+    }
+
+    // 后端模型名 -> 本地引擎可用模型名
+    function mapLocalModel(model) {
+        if (model === 'linear') return 'linear';
+        if (model === 'ma') return 'ma';
+        return 'combined';
+    }
+
+    async function loadSignals() {
+        try {
+            const res = await Backend.signals(currentRange);
+            ChartManager.setSignals(res.signals || []);
+        } catch (err) {
+            console.warn('加载信号失败:', err);
+        }
+    }
+
+    function setBackendStatus(online, res) {
+        const el = document.getElementById('backendStatus');
+        if (!el) return;
+        if (online) {
+            const note = res && res.note ? ` · ${res.note}` : '';
+            el.textContent = `🟢 量化后端在线${note}`;
+            el.className = 'backend-status online';
+        } else {
+            el.textContent = '🟡 后端离线 · 使用本地引擎';
+            el.className = 'backend-status offline';
+        }
+    }
+
+    function updateStatsFromBackend(res) {
+        const preds = res.predictions;
+        const fmt = (v) => v ? `$${Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '--';
+        const at = (i) => preds[Math.min(i, preds.length - 1)]?.price;
+        const current = pricesCache.length ? pricesCache[pricesCache.length - 1].value : at(0);
+
+        const pctChange = (future) => {
+            if (!future || !current) return null;
+            const pct = ((future - current) / current * 100).toFixed(1);
+            return { text: `${pct >= 0 ? '+' : ''}${pct}%`, isUp: pct >= 0 };
+        };
+
+        document.getElementById('statCurrentPrice').textContent = fmt(current);
+        document.getElementById('statPrice1m').textContent = fmt(at(29));
+        setChange('statChange1m', pctChange(at(29)));
+        document.getElementById('statPrice3m').textContent = fmt(at(89));
+        setChange('statChange3m', pctChange(at(89)));
+        document.getElementById('statPrice6m').textContent = fmt(at(preds.length - 1));
+        setChange('statChange6m', pctChange(at(preds.length - 1)));
+
+        const last = at(preds.length - 1);
+        document.getElementById('statTrend').textContent =
+            last > current ? '📈 看涨' : (last < current ? '📉 看跌' : '➡️ 横盘');
+
+        // 用回测方向准确率作为置信度
+        const m = res.metrics || {};
+        const conf = m.directional_accuracy != null ? Math.round(m.directional_accuracy * 100) : 60;
+        document.getElementById('statConfidence').textContent = `${conf}%`;
+        document.getElementById('confidenceFill').style.width = `${conf}%`;
+
+        // 用预测区间宽度估算波动率
+        const p = preds[preds.length - 1];
+        const vol = p && p.price ? ((p.upper_80 - p.lower_80) / 2 / p.price * 100).toFixed(1) : '--';
+        document.getElementById('statVolatility').textContent = `${vol}%`;
+
+        if (m.mape != null) {
+            document.getElementById('statRSI').textContent = `MAPE ${m.mape.toFixed(1)}%`;
+        }
+
+        // 更新统计面板 (Sharpe / 最大回撤)
+        updateBackendStats();
+    }
+
+    async function updateBackendStats() {
+        try {
+            const res = await Backend.stats(currentRange);
+            const el = document.getElementById('backendStats');
+            if (el && res.stats) {
+                const s = res.stats;
+                el.innerHTML =
+                    `Sharpe ${s.sharpe} · 最大回撤 ${(s.max_drawdown * 100).toFixed(1)}% · ` +
+                    `胜率 ${(s.win_rate * 100).toFixed(1)}% · 年化波动 ${(s.annual_volatility * 100).toFixed(1)}%`;
+            }
+        } catch (err) {
+            /* optional */
+        }
     }
 
     // ===== UI Updates =====
@@ -184,6 +289,17 @@
             currentModel = e.target.value;
             if (pricesCache.length > 0) runPrediction();
         });
+
+        // 后端地址配置
+        const backendInput = document.getElementById('backendUrl');
+        if (backendInput) {
+            const stored = localStorage.getItem('aicoin_backend_url');
+            if (stored) backendInput.value = stored;
+            backendInput.addEventListener('change', (e) => {
+                Backend.setBaseUrl(e.target.value.trim());
+                loadData();
+            });
+        }
 
         // 刷新按钮
         document.getElementById('refreshBtn').addEventListener('click', () => {

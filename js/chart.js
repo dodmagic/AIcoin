@@ -7,6 +7,8 @@ const ChartManager = {
     predictionSeries: null,
     upperBandSeries: null,
     lowerBandSeries: null,
+    upper95BandSeries: null,
+    lower95BandSeries: null,
     indicatorSeries: [],
     volumeChart: null,
     volumeSeries: null,
@@ -43,17 +45,33 @@ const ChartManager = {
             title: '预测'
         });
 
-        // 置信区间上轨
+        // 置信区间上轨 (80%)
         this.upperBandSeries = this.mainChart.addLineSeries({
-            color: 'rgba(255, 152, 0, 0.3)',
+            color: 'rgba(255, 152, 0, 0.35)',
             lineWidth: 1,
             lineStyle: LightweightCharts.LineStyle.Dotted,
             crosshairMarkerVisible: false,
         });
 
-        // 置信区间下轨
+        // 置信区间下轨 (80%)
         this.lowerBandSeries = this.mainChart.addLineSeries({
-            color: 'rgba(255, 152, 0, 0.3)',
+            color: 'rgba(255, 152, 0, 0.35)',
+            lineWidth: 1,
+            lineStyle: LightweightCharts.LineStyle.Dotted,
+            crosshairMarkerVisible: false,
+        });
+
+        // 置信区间上轨 (95%)
+        this.upper95BandSeries = this.mainChart.addLineSeries({
+            color: 'rgba(255, 152, 0, 0.18)',
+            lineWidth: 1,
+            lineStyle: LightweightCharts.LineStyle.Dotted,
+            crosshairMarkerVisible: false,
+        });
+
+        // 置信区间下轨 (95%)
+        this.lower95BandSeries = this.mainChart.addLineSeries({
+            color: 'rgba(255, 152, 0, 0.18)',
             lineWidth: 1,
             lineStyle: LightweightCharts.LineStyle.Dotted,
             crosshairMarkerVisible: false,
@@ -128,12 +146,49 @@ const ChartManager = {
     },
 
     /**
-     * 更新预测线和置信区间
+     * 更新预测线和置信区间 (本地引擎: 单一区间)
      */
     setPrediction(predictions, upperBand, lowerBand) {
         this.predictionSeries.setData(predictions);
         this.upperBandSeries.setData(upperBand);
         this.lowerBandSeries.setData(lowerBand);
+        if (this.upper95BandSeries) this.upper95BandSeries.setData([]);
+        if (this.lower95BandSeries) this.lower95BandSeries.setData([]);
+    },
+
+    /**
+     * 更新预测扇形图 (后端: 80% + 95% 置信区间)
+     * @param {Array} points - [{time, price, lower_80, upper_80, lower_95, upper_95}]
+     */
+    setPredictionFan(points) {
+        const line = points.map(p => ({ time: p.time, value: p.price }));
+        const u80 = points.map(p => ({ time: p.time, value: p.upper_80 }));
+        const l80 = points.map(p => ({ time: p.time, value: p.lower_80 }));
+        const u95 = points.map(p => ({ time: p.time, value: p.upper_95 }));
+        const l95 = points.map(p => ({ time: p.time, value: p.lower_95 }));
+
+        this.predictionSeries.setData(this._dedup(line));
+        this.upperBandSeries.setData(this._dedup(u80));
+        this.lowerBandSeries.setData(this._dedup(l80));
+        this.upper95BandSeries.setData(this._dedup(u95));
+        this.lower95BandSeries.setData(this._dedup(l95));
+    },
+
+    /**
+     * 在K线上叠加买入/卖出信号箭头
+     * @param {Array} signals - [{time, type:'buy'|'sell', reason}]
+     */
+    setSignals(signals) {
+        if (!this.candleSeries) return;
+        const markers = (signals || []).map(s => ({
+            time: s.time,
+            position: s.type === 'buy' ? 'belowBar' : 'aboveBar',
+            color: s.type === 'buy' ? '#26a69a' : '#ef5350',
+            shape: s.type === 'buy' ? 'arrowUp' : 'arrowDown',
+            text: s.type === 'buy' ? '买' : '卖'
+        }));
+        const unique = this._dedup(markers);
+        try { this.candleSeries.setMarkers(unique); } catch (e) { /* ignore */ }
     },
 
     /**
