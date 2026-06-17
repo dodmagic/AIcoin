@@ -38,6 +38,16 @@ WORKDIR /app
 COPY --from=builder /install/deps /usr/local
 COPY backend ./backend
 
+# The runtime container doesn't install packages, so drop build-only packaging
+# tools to keep the image smaller and avoid shipping vulnerable vendored copies.
+RUN rm -rf \
+      /usr/local/lib/python3.*/site-packages/pkg_resources \
+      /usr/local/lib/python3.*/site-packages/setuptools \
+      /usr/local/lib/python3.*/site-packages/setuptools-*.dist-info \
+      /usr/local/lib/python3.*/site-packages/wheel \
+      /usr/local/lib/python3.*/site-packages/wheel-*.dist-info \
+      /usr/local/bin/wheel
+
 RUN chown -R appuser:appuser /app
 USER appuser
 
