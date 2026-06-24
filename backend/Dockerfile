@@ -34,6 +34,14 @@ RUN useradd --create-home --uid 10001 appuser
 
 WORKDIR /app
 
+# Patch the build tooling shipped in the slim base image. python:3.11-slim
+# bundles outdated, vulnerable versions that Trivy flags as HIGH:
+#   * wheel <0.46.2                     -> CVE-2026-24049
+#   * setuptools' vendored jaraco.context <6.1.0 -> CVE-2026-23949
+# Upgrading replaces them (and removes the stale dist-info), which a plain
+# requirements pin cannot do for tools that are part of the base image.
+RUN pip install --no-cache-dir --upgrade "setuptools>=81.0.0" "wheel>=0.46.2"
+
 # Bring in the pre-built dependencies, then the application code.
 COPY --from=builder /install/deps /usr/local
 COPY backend ./backend

@@ -13,12 +13,6 @@ scikit-learn>=1.3
 # HTTP client for exchange data
 requests>=2.31
 
-# Security patches: pin transitive dependencies to versions without known CVEs.
-# jaraco.context <6.1.0 → CVE-2026-23949 (path traversal via tar archives)
-# wheel <0.46.2       → CVE-2026-24049 (arbitrary file permission modification)
-jaraco.context>=6.1.0
-wheel>=0.46.2
-
 # --- Optional heavy models -------------------------------------------------
 # The backend works without these installed (it degrades gracefully and the
 # affected models report themselves as unavailable). Install them to enable
